@@ -1,2 +1,3 @@
 all:
-	g++ --std=c++11 -o impact_ion impact_ion.C `root-config --cflags --glibs` 
+#	g++ --std=c++11 -o spectrum spectrum.C `root-config --cflags --glibs` 
+	g++ -o spectrum spectrum.C `root-config --cflags --glibs` 
