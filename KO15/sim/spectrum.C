@@ -24,6 +24,7 @@
 #include "TMultiGraph.h"
 #include "TMath.h"
 #include "TCanvas.h"
+#include "TTree.h"
 #include "TPad.h"
 #include "TString.h"
 #include "TStyle.h"
@@ -43,6 +44,131 @@
 using namespace std;
 
 //  gRandom->GetSeed();
+
+/* The LoadConfig function loads the configuration file given by filename
+   It returns a map of key-value pairs stored in the conifuration file */
+// std::map<std::string,std::string> LoadConfig(std::string filename)
+// {
+//   std::map<std::string,std::string> ans; //A map of key-value pairs in the file
+//   std::ifstream input(filename); //The input stream
+//   while(input) //Keep on going as long as the file stream is good
+//     {
+//       std::string key; //The key
+//       std::string value; //The value
+//       std::getline(input, key, ':'); //Read up to the : delimiter into key
+//       std::getline(input, value, '\n'); //Read up to the newline into value
+//       std::string::size_type pos1 = value.find_first_of("\""); //Find the first quote in the value
+//       std::string::size_type pos2 = value.find_last_of("\""); //Find the last quote in the value
+//       if(pos1 != std::string::npos && pos2 != std::string::npos && pos2 > pos1) //Check if the found positions are all valid
+//         {
+// 	  //value = value.substr(pos1+1,pos2-pos1-1); //Take a substring of the part between the quotes
+// 	  //	  ans[key] = value; //Store the result in the map
+// 	  //ans.insert(pair<string,string>("key",0));// = value; //Store the result in the map
+//         }
+//     }
+//   input.close(); //Close the file stream
+//   return ans; //And return the result
+// }
+
+// int setVariable(string varFile, string varName, string varVal) {
+//   ifstream filein(varFile); //File to read from
+//   ofstream fileout("_fileout.sty"); //Temporary file
+//   if(!filein || !fileout) {
+//     cout << "Error opening files!" << endl;
+//     return 1;
+//   }
+//   string strTemp;
+//   bool found = false;
+//   while(filein >> strTemp) {
+//     string varNameTemp = strTemp.substr(0, strTemp.find('=')-1); 
+//     if(varNameTemp == varName) {
+//       fileout << varName << " = " << varVal << "\n";
+//       found = true;
+//     } else {
+//       fileout << strTemp << "\n";
+//     }
+//     //if(found) break; // Update only first occurance
+//    }
+//   if (!found) {
+//     fileout << varName << "=" << varVal << "\n";
+//   }
+//   rename("_fileout.sty",varFile.c_str());
+//   return 0;
+// }
+
+// string getVariable(string varFile, string varName) {
+//   ifstream filein(varFile); //File to read from
+//   if(!filein) {
+//     cout << "Error opening file!" << endl;
+//     return 0;
+//   }
+//   string strTemp;
+//   bool readNextLine = false;
+//   while(filein >> strTemp) {
+//     string varNameTemp = strTemp.substr(0, strTemp.find('='));     
+//     cout<<varNameTemp<<endl;
+//     cout<<strTemp.substr(strTemp.find('=')+1,strTemp.size())<<endl;
+//     if(strTemp == varName) return strTemp.substr(strTemp.find('=')+1,strTemp.size());
+//   }
+//   return "";
+// }
+
+
+int setVariable(TString varFile, TString varName, TString varVal) {
+  varName = "\\newcommand{\\"+varName+"}";
+  varVal = "{"+varVal+"}";
+  ifstream filein(varFile.Data()); //File to read from
+  ofstream fileout("fileout.sty"); //Temporary file
+  if(!filein || !fileout) {
+    cout << "Error opening files!" << endl;
+    return 1;
+  }
+  string strTemp;
+  bool found = false;
+  bool skipNextLine = false;
+  while(filein >> strTemp) {
+    if (skipNextLine) {
+      skipNextLine = false;
+      continue;
+    }
+    if(strTemp == varName) {
+      fileout << varName << "\n";
+      fileout << varVal << "\n";
+      skipNextLine = true;
+      found = true;
+    } else {
+      fileout << strTemp << "\n";
+    }
+    //if(found) break; // Update only first occurance
+   }
+  if (!found) {
+    fileout << varName << "\n";
+    fileout << varVal << "\n";
+  }
+  rename("fileout.sty",varFile.Data());
+  return 0;
+}
+
+double getVariable(TString varFile, TString varName) {
+  varName = "\\newcommand{\\"+varName+"}";
+  ifstream filein(varFile.Data()); //File to read from
+  if(!filein) {
+    cout << "Error opening file!" << endl;
+    return 0;
+  }
+  string strTemp;
+  bool readNextLine = false;
+  while(filein >> strTemp) {
+    if (readNextLine) {
+      return stod(strTemp.substr(1,strTemp.length()-2));
+      continue;
+    }
+    if(strTemp == varName) {
+      readNextLine = true;
+    }
+  }
+  return 0;
+}
 
 std::random_device rd;  //Will be used to obtain a seed for the random number engine
 std::mt19937 gen(rd()); //Standard mersenne_twister_engine seeded with rd()
@@ -106,162 +232,158 @@ double isum(double* xp, double* par) {
 }
 
 
-double energyFromCharge(double x, int N_steps, double probII, double &impacts, double maximpacts) {
-  // MFP method
+double energyFromCharge(double x, double lambda_impact, double lambda_trap, int &num_impacts, int &num_traps, int max_impacts) {
+  if (num_impacts>max_impacts) return 0.; // Don't bother anymore
   if (x>1) return 0; // sanity check
-  if (impacts>maximpacts) return 0.; // Don't bother anymore
 
-  // Optimization attempt (not working)
-  // std::uniform_real_distribution<> dis_uni_cut(exp((x-1)*probII),1);
-  // double nextCollision;
-  // if (impacts<maximpacts) nextCollision= x-log(dis_uni_cut(gen))/probII;
-  // else nextCollision= x-log(dis_uni(gen))/probII;
-
-  double nextCollision = x-log(dis_uni(gen))/probII;
-  if (nextCollision>1) return 1-x; // charge makes it to 1 without colliding
-  else { // impact occured
-    impacts++;
-    return
-      nextCollision-x // energy from this charge until its next collision
-      + energyFromCharge(nextCollision,N_steps,probII,impacts,maximpacts) // energy from this charge after its collision
-      + energyFromCharge(nextCollision,N_steps,probII,impacts,maximpacts);// energy from impact charge
+  // MFP method
+  double next_impact = x-log(dis_uni(gen))/lambda_impact;
+  double next_trap = x-log(dis_uni(gen))/lambda_trap;
+  if (next_impact<next_trap) { // charge impact ionizes before being trapped.
+    if (next_impact>1) return 1-x; // charge makes it to 1 without colliding
+    else { // impact occured
+      num_impacts++;
+      return
+	next_impact-x // energy from this charge until its impact
+	+ energyFromCharge(next_impact,lambda_impact,lambda_trap,num_impacts,num_traps,max_impacts) // energy from this charge after its impact
+	+ energyFromCharge(next_impact,lambda_impact,lambda_trap,num_impacts,num_traps,max_impacts);// energy from impact charge
+    }
+  } else { // charge is trapped before impact ionizing
+    if (next_trap>1) return 1-x; // charge makes it to 1 without trapping
+    else {
+      num_traps++;
+      return next_trap-x; // energy from this charge until its trap
+    }
   }
-		       
-  // // Step method
+  
+  // // Step method (impact only)
   // double E = 1-x; // initial energy  
+  // const int N_steps = 100+100*lambda_impact;
   // for (double xi=x; xi<1; xi+=1./N_steps) {
   //   // See if you knock out a charge
-  //   if (dis_uni(gen)<(probII/N_steps)) {
-  //     impacts +=1;
-  //     E += energyFromCharge(xi, N_steps, probII, impacts, maximpacts);
+  //   if (dis_uni(gen)<(lambda_impact/N_steps)) {
+  //     num_impacts +=1;
+  //     E += energyFromCharge(xi, lambda_impact, lambda_trap, num_impacts, num_traps, max_impacts);
   //   }
   //   // Generate only 1 additional charge
-  //   // if (dis_uni(gen)<(probII/N_steps)) {
+  //   // if (dis_uni(gen)<(lambda_impact/N_steps)) {
   //   //   impacts +=1;
   //   //   return E + 1-xi;
   //   // }
   // }
-  //  return E;
+  // return E;
 }
 
 int main(int argc, char* argv[]) {
+  if (argc<4) {
+    cout<<"Invalid command line arguments. Aborting."<<endl;
+    return 1;
+  }
   const int N = atoi(argv[1]); // number of events
-  const int NII = atoi(argv[2]); // number of impact ionizations
-  const int maxNII = atoi(argv[3]); // max number of impact ionizations to keep track of
+  string cfg = argv[2]; // config filename 
+  string suffix = argv[3]; // config filename 
+
+  // setVariable(cfg,"lambdaimpact","0.03");
+  // setVariable(cfg,"surffrac","0.6");
+  // setVariable(cfg,"res","0.1");
+  // setVariable(cfg,"thresh","0.6");
+  // setVariable(cfg,"thresh_res","0.05");
+  // setVariable(cfg,"max_charges","10");
+
+  // double lambda_impact = stod(getVariable(cfg,"lambdaimpact"));
+  // double lambda_trap = stod(getVariable(cfg,"lambdatrap"));
+  // double surf_frac = stod(getVariable(cfg,"surffrac"));
+  // double res = stod(getVariable(cfg,"res"));
+  // double thresh = stod(getVariable(cfg,"thresh"));
+  // double thresh_res = stod(getVariable(cfg,"threshres"));
+  // int max_charges = stoi(getVariable(cfg,"maxcharges"));
+  // cout<<lambda_impact<<" "<<lambda_trap<<" "<<surf_frac<<" "<<res<<" "<<thresh<<" "<<thresh_res<<" "<<max_charges<<endl;
+  // return 0;
+  // double background_frac = stod(getVariable(cfg,"backgroundfrac"));
+  // double lambda_background = stod(getVariable(cfg,"lambdabackground"));
+
+  double lambda_impact = getVariable(cfg,"lambdaimpact");
+  double lambda_trap = getVariable(cfg,"lambdatrap");
+  double surf_frac = getVariable(cfg,"surffrac");
+  double res = getVariable(cfg,"res");
+  double thresh = getVariable(cfg,"thresh");
+  double thresh_res = getVariable(cfg,"threshres");
+  int max_charges = int(getVariable(cfg,"maxcharges"));
+  double background_frac = getVariable(cfg,"backgroundfrac");
+  double lambda_background = getVariable(cfg,"lambdabackground");
 
   TRandom3* myRNG = new TRandom3();
   gRandom = myRNG;
+  std::normal_distribution<> dis_res(1,res);
+  std::normal_distribution<> dis_thresh(thresh,thresh_res);
 
   int N_steps = 100;
   double hist_max = 4.5;
-  const int N_prob = 5;
-  double probII[N_prob] = {0.01,0.1,1.,3.,10.}; // probablility of knocking out a charge over the full length of the crystal
-  //  double probII[N_prob] = {5.}; // probablility of knocking out a charge over the full length of the crystal
-  TH1D* h[N_prob];
-  TH1D* hsum[N_prob];
-  for (int i=0; i<N_prob; i++) {
-    h[i] = new TH1D(Form("h%d",i),";Total distance travelled by charges",N_steps*hist_max/5,0,hist_max);
-    hsum[i] = new TH1D(Form("hsum%d",i),";Total distance travelled by charges",N_steps*hist_max/5,0,hist_max);
-  }
+  TString outfilename = "simspectrum-"+suffix+".root";
+  TFile* outfile = new TFile(outfilename,"RECREATE");
+  TTree* outtree = new TTree("events","events");
+  double energy = 0;
+  double start_position = 0;
+  int num_impacts = 0;
+  int num_traps = 0;
+  int event_type = 0; // 0 = leakage, 1 = possion background
+  outtree->Branch("energy",&energy);
+  outtree->Branch("num_impacts",&num_impacts);
+  outtree->Branch("num_traps",&num_traps);
+  outtree->Branch("lambda_impact",&lambda_impact);
+  outtree->Branch("lambda_trap",&lambda_trap);
+  outtree->Branch("start_position",&start_position);
+  outtree->Branch("event_type",&event_type);
+  cout<<"Prob of Impact Ionization: "<<lambda_impact<<endl;
+  cout<<"Fraction of Surface Events: "<<surf_frac<<endl;
   // Event loop
-  for (int i=0; i<N_prob; i++) {
-    cout<<" Generating "<<N<<" events with P="<<probII[i]<<" and taking events with exactly "<<NII<<" impact ionizations"<<endl;
-    int Nloop = N;
-    if (probII[i]<0.05 && NII>1) Nloop = 10*N;
-    for (int j=0; j<Nloop; j++) {
-      if (j%1000000==0) cout<<" "<<j<<"/"<<Nloop<<endl;
-      // Generate leakage charge position
-      double x = dis_uni(gen);
-      // Get energy from charge transport
-      double impacts = 0;
-      //      double E = energyFromCharge(x, N_steps, probII[i], impacts, NII);
-      double E = energyFromCharge(x, N_steps, probII[i], impacts, maxNII);
-      hsum[i]->Fill(E);
-      // Require x number of impacts
-      if (impacts!=NII) continue;
-      // Fill histogram
-      h[i]->Fill(E);
+  event_type = 0;
+  for (int i=0; i<N; i++) {
+    if (i%1000000==0) cout<<" "<<i<<"/"<<N<<endl;
+    // Generate leakage charge position
+    bool second_surf = false; // did a surface charge generate a second surface charge
+    if (i<N*surf_frac)
+      start_position = 0.;
+    else
+      start_position = dis_uni(gen);
+    // Reset variables
+    energy = 0;
+    num_impacts = 0;
+    // Get energy from charge transport
+    energy = energyFromCharge(start_position, lambda_impact, lambda_trap, num_impacts, num_traps, max_charges);
+    // Apply resolution
+    energy *= dis_res(gen);
+    // Apply threshhold
+    if (energy<dis_thresh(gen)) continue;
+    // Fill
+    outtree->Fill();
+  }
+  // Poisson backgound event loop
+  event_type = 1;
+  poisson_distribution<int> dis_background(2);
+  for (int i=0; i<N*background_frac; i++) {
+    if (i%1000000==0) cout<<" "<<i<<"/"<<N*background_frac<<endl;
+    // Generate leakage charge position
+    start_position = dis_uni(gen);
+    // Reset variables
+    energy = 0;
+    num_impacts = 0;
+    int num_charges = dis_background(gen);
+    // Get energy from charge transport
+    for (int c=0; c<num_charges; c++) {
+      energy += energyFromCharge(start_position, lambda_impact, lambda_trap, num_impacts, num_traps, max_charges);
     }
-  }
-  gStyle->SetOptStat(0);
-  TCanvas *c = new TCanvas("c","c",1000,800);
-  for (int i=0; i<N_prob; i++) {
-    h[i]->Sumw2();
-    h[i]->SetLineColor(mycolors12[i]);
-    cout<<" "<<h[i]->GetEntries()<<"/"<<N<<" have NII="<<NII<<" for P="<<probII[i]<<endl;
-    h[i]->Scale(1./h[i]->Integral()/h[i]->GetBinWidth(1));
-    //h[i]->Scale(1./N/h[i]->GetBinWidth(1));
-  }
-  h[0]->Draw();
-  h[0]->SetTitle(Form("Bulk Leakage with at exactly %d I.I.",NII));
-  //h[0]->SetTitle("Leakage charges distributed uniformly across the crystal");
-  for (int i=1; i<N_prob; i++) {
-    h[i]->Draw("same");
-  }
-  h[0]->GetYaxis()->SetRangeUser(1e-4,1.2*h[N_prob-1]->GetMaximum());
-
-  TF1* f[N_prob];
-  for (int i=0; i<N_prob; i++) {
-    if (NII==0) f[i] = new TF1(Form("f%d",i),i0exp,0,5,2);
-    else if (NII==1) f[i] = new TF1(Form("f%d",i),i1exp,0,5,2);
-    else if (NII==2) f[i] = new TF1(Form("f%d",i),i2exp,0,5,2);
-    else return 1;
-    f[i]->SetParameter(0,1);
-    f[i]->FixParameter(1,probII[i]);
-    //    f[i]->FixParameter(0,f[i]->GetParameter(0)/f[i]->Integral(0,5));
-    h[i]->Fit(f[i],"R0Q");
-    cout<<"f["<<i<<"] integral: "<<f[i]->Integral(0,5)<<endl;
-    f[i]->SetLineColor(mycolors12[i]);
-    f[i]->Draw("same");
+    // Apply resolution
+    energy *= dis_res(gen);
+    // Apply threshhold
+    if (energy<dis_thresh(gen)) continue;
+    // Fill
+    outtree->Fill();
   }
   
-
-  //  c->SetLogy();
-
-  TLegend* leg = new TLegend(0.6,0.6,0.9,0.9);
-  leg->AddEntry("","I.I. Probability","");
-  leg->SetNColumns(1);
-  for (int i=0; i<N_prob; i++) leg->AddEntry(h[i],Form("%.3f",probII[i]),"le");
-  leg->Draw();
-
-  TLegend* leg2 = new TLegend(0.6,0.3,0.9,0.6);
-  leg2->AddEntry("","Model","");
-  leg2->SetNColumns(1);
-  for (int i=0; i<N_prob; i++) leg2->AddEntry(f[i],Form("Chi2/NDF = %.3f",f[i]->GetChisquare()/f[i]->GetNDF()),"l");
-  leg2->Draw();
-
-  gStyle->SetOptFit(0);
-  c->SaveAs(Form("spectrum_%d_II.pdf",NII));
-  c->SaveAs(Form("spectrum_%d_II.png",NII));
-
-  // Sum
-  TCanvas *csum = new TCanvas("csum","csum",1000,800);
-  csum->cd();
-  for (int i=0; i<N_prob; i++) {
-    hsum[i]->SetLineColor(mycolors12[i]);
-    hsum[i]->Sumw2();
-    hsum[i]->Scale(1./(N*hsum[i]->GetBinWidth(1)));
-    if (i==0) hsum[i]->Draw();
-    else hsum[i]->Draw("same");
-  }
-  TF1* fsum[N_prob];
-  for (int i=0; i<N_prob; i++) {
-    fsum[i] = new TF1(Form("fsum%d",i),isum,0,2,2);
-    fsum[i]->FixParameter(0,1);
-    fsum[i]->FixParameter(1,probII[i]);
-    //    f[i]->FixParameter(0,f[i]->GetParameter(0)/f[i]->Integral(0,5));
-    h[i]->Fit(fsum[i],"R0");
-    fsum[i]->SetLineColor(mycolors12[i]);
-    fsum[i]->Draw("same");
-    cout<<fsum[i]->Eval(0.5)<<endl;
-  }
-  TLegend* leg3 = new TLegend(0.6,0.3,0.9,0.6);
-  leg3->AddEntry("","Model","");
-  leg3->SetNColumns(1);
-  for (int i=0; i<N_prob; i++) leg3->AddEntry(fsum[i],Form("Chi2/NDF = %.3f",fsum[i]->GetChisquare()/fsum[i]->GetNDF()),"l");
-  leg3->Draw();
-  leg->Draw();
-  csum->SetLogy();
-  //  hsum[0]->GetYaxis()->SetRangeUser(0.9,1.1);
-  csum->SaveAs("spectrum_sum.png");
+  outfile->cd();
+  cout<<"Writing "<<outfilename.Data()<<endl;
+  outtree->Write();
+  outfile->Close();
+  return 1;
 }
