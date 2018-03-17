@@ -45,6 +45,7 @@
 using namespace std;
 
 
+
 int setVariable(string varFile, string varName, string varVal) {
   ifstream filein(varFile); //File to read from
   ofstream fileout("_fileout.sty"); //Temporary file
@@ -152,9 +153,6 @@ double isum(double* xp, double* par) {
 
 
 
-std::random_device rd;  //Will be used to obtain a seed for the random number engine
-std::mt19937 gen(rd()); //Standard mersenne_twister_engine seeded with rd()
-std::uniform_real_distribution<> dis_uni(0,1);
 
 double Spectrum::EnergyFromCharge(double x, int sign) {
   if (num_impacts_ee>max_impacts) return 0.; // Don't bother anymore
@@ -188,51 +186,66 @@ double Spectrum::EnergyFromCharge(double x, int sign) {
     if(fabs(deltas[i]) < fabs(deltas[min_index]))
       min_index = i;     
   }
+  double next_x = x+sign*pol*deltas[min_index];
   // Compute next step. The smallest delta determines the process that will occur.
-  if (sign<0 && x+deltas[min_index]>1) return 1-x;// charge makes it to edge without colliding
-  else if (sign>0 && x-deltas[min_index]<0) return x;// charge makes it to edge without colliding
-  else if (min_index==0 && sign<0) { // e impact ionizes and produces e
+  if (sign<0 && next_x>1) { // e makes it to 1 without colliding
+    int num_surf_eh = dis_surf_eh1(gen);
+    num_impacts_eh += num_surf_eh;
+    double E = 1-x; // this charge
+    for (int i=0; i<num_surf_eh; i++) E += EnergyFromCharge(1,+1); // hs freed at surface by e 
+    return E;
+  } else if (sign<0 && next_x<0) { // e makes it to 0 without colliding
+    int num_surf_eh = dis_surf_eh0(gen);
+    num_impacts_eh += num_surf_eh;
+    double E = x; // this charge
+    for (int i=0; i<num_surf_eh; i++) E += EnergyFromCharge(0,+1); // hs freed at surface by e 
+    return E;
+  } else if (sign>0 && next_x<0) { // h makes it to 0 without colliding
+    int num_surf_he = dis_surf_he0(gen);
+    num_impacts_he += num_surf_he;
+    double E = 1-x; // this charge
+    for (int i=0; i<num_surf_he; i++) E += EnergyFromCharge(0,-1); // es freed at surface by h
+    return E;
+  } else if (sign>0 && next_x>1) { // h makes it to 1 without colliding
+    int num_surf_he = dis_surf_he1(gen);
+    num_impacts_he += num_surf_he;
+    double E = x; // this charge
+    for (int i=0; i<num_surf_he; i++) E += EnergyFromCharge(1,-1); // es freed at surface by h
+    return E;
+  } else if (min_index==0 && sign<0) { // e impact ionizes and produces e
     num_impacts_ee++;
     return
       delta_impact_ee // energy from this charge until its impact
-      + EnergyFromCharge(x+delta_impact_ee,-1) // energy from this charge after its impact
-      + EnergyFromCharge(x+delta_impact_ee,-1);// energy from impact charge
+      + EnergyFromCharge(next_x,-1) // energy from this charge after its impact
+      + EnergyFromCharge(next_x,-1);// energy from impact charge
   } else if (min_index==1 && sign<0) {// e impact ionizes and produces h
     num_impacts_eh++;
     return
       delta_impact_eh // energy from this charge until its impact
-      + EnergyFromCharge(x+delta_impact_eh,-1) // energy from this charge after its impact
-      + EnergyFromCharge(x+delta_impact_eh,+1);// energy from impact charge
+      + EnergyFromCharge(next_x,-1) // energy from this charge after its impact
+      + EnergyFromCharge(next_x,+1);// energy from impact charge
   } else if (min_index==2 && sign>0) {// h impact ionizes and produces e
     num_impacts_he++;
     return
       delta_impact_he // energy from this charge until its impact
-      + EnergyFromCharge(x-delta_impact_he,+1) // energy from this charge after its impact
-      + EnergyFromCharge(x-delta_impact_he,-1);// energy from impact charge
+      + EnergyFromCharge(next_x,+1) // energy from this charge after its impact
+      + EnergyFromCharge(next_x,-1);// energy from impact charge
   } else if (min_index==3 && sign>0) {// h impact ionizes and produces h
     num_impacts_hh++;
     return
       delta_impact_hh // energy from this charge until its impact
-      + EnergyFromCharge(x-delta_impact_ee,+1) // energy from this charge after its impact
-      + EnergyFromCharge(x-delta_impact_ee,+1);// energy from impact charge
+      + EnergyFromCharge(next_x,+1) // energy from this charge after its impact
+      + EnergyFromCharge(next_x,+1);// energy from impact charge
   } else if (min_index==4 && sign<0) {// e gets trapped
-    if (x+delta_trap_e>1) return 1-x; // charge makes it to edge without trapping
-    else {
-      num_traps_e++;
-      return delta_trap_e; // energy from this charge until its trap
-    }    
+    num_traps_e++;
+    return delta_trap_e; // energy from this charge until its trap
   } else if (min_index==5 && sign>0) {// h gets trapped
-    if (x-delta_trap_e<0) return x; // charge makes it to edge without trapping
-    else {
-      num_traps_h++;
-      return delta_trap_h; // energy from this charge until its trap
-    }    
-  } else if (sign<0) {// these last two should never actually happen
-    return 1-x;
-  } else {
-    return x;
-  } 
-  return 0.;
+    num_traps_h++;
+    return delta_trap_h; // energy from this charge until its trap
+  } else {// this should never actually happen
+    cout<<"Reached end of if block. Check code"<<endl;
+    return 0;
+  }
 }
 
 void Spectrum::Reset() {
@@ -244,81 +257,59 @@ void Spectrum::Reset() {
   num_impacts_hh=0;
   num_traps_e=0;
   num_traps_h=0;
+  laser=false;
   return;
 }
 
 Spectrum::Spectrum(string cfg) {
   LoadConfig(cfg);
+
+  gen.seed(rd());
+  dis_uni.param(uniform_real_distribution<>::param_type(0,1));
+  dis_surf_eh0.param(poisson_distribution<int>::param_type(lambda_surf_eh0));
+  dis_surf_he0.param(poisson_distribution<int>::param_type(lambda_surf_he0)); 
+  dis_surf_eh1.param(poisson_distribution<int>::param_type(lambda_surf_eh1));
+  dis_surf_he1.param(poisson_distribution<int>::param_type(lambda_surf_he1));
+  dis_laser_pos.param(poisson_distribution<int>::param_type(lambda_laser_pos));
+  dis_laser_neg.param(poisson_distribution<int>::param_type(lambda_laser_neg));
+  
 }
 
 void Spectrum::LoadConfig(string cfg) {
-  lambda_impact_ee = stod(getVariable(cfg,"lambda_impact_ee"));
-  lambda_impact_eh = stod(getVariable(cfg,"lambda_impact_eh"));
-  lambda_impact_he = stod(getVariable(cfg,"lambda_impact_he"));
-  lambda_impact_hh = stod(getVariable(cfg,"lambda_impact_hh"));
-  lambda_trap_e = stod(getVariable(cfg,"lambda_trap_e"));
-  lambda_trap_h = stod(getVariable(cfg,"lambda_trap_h"));
-  lambda_bulk_e_possion = stod(getVariable(cfg,"lambda_bulk_e_poisson"));
-  lambda_surf_e_possion = stod(getVariable(cfg,"lambda_surf_e_poisson"));
-  frac_surf_e = stod(getVariable(cfg,"frac_surf_e"));
-  frac_surf_h = stod(getVariable(cfg,"frac_surf_h"));
-  frac_bulk_e = stod(getVariable(cfg,"frac_bulk_e"));
-  frac_bulk_e_poisson = stod(getVariable(cfg,"frac_bulk_e_poisson"));
-  frac_bulk_h = stod(getVariable(cfg,"frac_bulk_h"));
   resolution = stod(getVariable(cfg,"resolution"));
   thresh = stod(getVariable(cfg,"thresh"));
   thresh_res = stod(getVariable(cfg,"thresh_res"));
   max_impacts = stoi(getVariable(cfg,"max_impacts"));
-  suffix = getVariable(cfg,"suffix").c_str();
-  frac_laser = stod(getVariable(cfg,"frac_laser"));
-  bin_n_laser = stoi(getVariable(cfg,"bin_n_laser"));
-  bin_p_laser = stod(getVariable(cfg,"bin_p_laser"));
+  lambda_trap_e = stod(getVariable(cfg,"lambda_trap_e"));
+  lambda_trap_h = stod(getVariable(cfg,"lambda_trap_h"));
+  lambda_impact_ee = stod(getVariable(cfg,"lambda_impact_ee"));
+  lambda_impact_eh = stod(getVariable(cfg,"lambda_impact_eh"));
+  lambda_impact_he = stod(getVariable(cfg,"lambda_impact_he"));
+  lambda_impact_hh = stod(getVariable(cfg,"lambda_impact_hh"));
+  lambda_surf_eh0 = stod(getVariable(cfg,"lambda_surf_eh0"));
+  lambda_surf_he0 = stod(getVariable(cfg,"lambda_surf_he0"));
+  lambda_surf_eh1 = stod(getVariable(cfg,"lambda_surf_eh1"));
+  lambda_surf_he1 = stod(getVariable(cfg,"lambda_surf_he1"));
+  lambda_laser_pos = stod(getVariable(cfg,"lambda_laser_pos"));
+  lambda_laser_neg = stod(getVariable(cfg,"lambda_laser_neg"));
+  rate_laser_pos = stod(getVariable(cfg,"rate_laser_pos"));
+  rate_laser_neg = stod(getVariable(cfg,"rate_laser_neg"));
+  rate_surf_e_pos = stod(getVariable(cfg,"rate_surf_e_pos"));
+  rate_surf_e_neg = stod(getVariable(cfg,"rate_surf_e_neg"));
+  rate_surf_h_pos = stod(getVariable(cfg,"rate_surf_h_pos"));
+  rate_surf_h_neg = stod(getVariable(cfg,"rate_surf_h_neg"));
+  rate_bulk_e_pos = stod(getVariable(cfg,"rate_bulk_e_pos"));
+  rate_bulk_e_neg = stod(getVariable(cfg,"rate_bulk_e_neg"));
+  rate_bulk_h_pos = stod(getVariable(cfg,"rate_bulk_h_pos"));
+  rate_bulk_h_neg = stod(getVariable(cfg,"rate_bulk_h_neg"));
+  livedays_pos = stod(getVariable(cfg,"livedays_pos"));
+  livedays_neg = stod(getVariable(cfg,"livedays_neg"));
+  suffix = getVariable(cfg,"suffix");
   
+
 }
 
-// double energyFromCharge(double x, double lambda_impact, double lambda_trap, int &num_impacts, int &num_traps, int max_impacts) {
-//   if (num_impacts>max_impacts) return 0.; // Don't bother anymore
-//   if (x>1) return 0; // sanity check
-
-//   // MFP method
-//   double next_impact = x-log(dis_uni(gen))/lambda_impact;
-//   double next_trap = x-log(dis_uni(gen))/lambda_trap;
-//   if (next_impact<next_trap) { // charge impact ionizes before being trapped.
-//     if (next_impact>1) return 1-x; // charge makes it to 1 without colliding
-//     else { // impact occured
-//       num_impacts++;
-//       return
-// 	next_impact-x // energy from this charge until its impact
-// 	+ energyFromCharge(next_impact,lambda_impact,lambda_trap,num_impacts,num_traps,max_impacts) // energy from this charge after its impact
-// 	+ energyFromCharge(next_impact,lambda_impact,lambda_trap,num_impacts,num_traps,max_impacts);// energy from impact charge
-//     }
-//   } else { // charge is trapped before impact ionizing
-//     if (next_trap>1) return 1-x; // charge makes it to 1 without trapping
-//     else {
-//       num_traps++;
-//       return next_trap-x; // energy from this charge until its trap
-//     }
-//   }
-  
-//   // // Step method (impact only)
-//   // double E = 1-x; // initial energy  
-//   // const int N_steps = 100+100*lambda_impact;
-//   // for (double xi=x; xi<1; xi+=1./N_steps) {
-//   //   // See if you knock out a charge
-//   //   if (dis_uni(gen)<(lambda_impact/N_steps)) {
-//   //     num_impacts +=1;
-//   //     E += energyFromCharge(xi, lambda_impact, lambda_trap, num_impacts, num_traps, max_impacts);
-//   //   }
-//   //   // Generate only 1 additional charge
-//   //   // if (dis_uni(gen)<(lambda_impact/N_steps)) {
-//   //   //   impacts +=1;
-//   //   //   return E + 1-xi;
-//   //   // }
-//   // }
-//   // return E;
-// }
-
-void Spectrum::Run(int N) {
+void Spectrum::Run() {
   TRandom3* myRNG = new TRandom3();
   gRandom = myRNG;
   std::normal_distribution<> dis_res(1,resolution);
@@ -329,6 +320,7 @@ void Spectrum::Run(int N) {
   TFile* outfile = new TFile(outfilename,"RECREATE");
   TTree* outtree = new TTree("events","events");
   int event_type = 0; // 0 = leakage, 1 = possion background
+  double t = 0;
   outtree->Branch("energy",&energy);
   outtree->Branch("num_impacts_ee",&num_impacts_ee);
   outtree->Branch("num_impacts_eh",&num_impacts_eh);
@@ -338,134 +330,82 @@ void Spectrum::Run(int N) {
   outtree->Branch("num_traps_h",&num_traps_h);
   outtree->Branch("start_position",&start_position);
   outtree->Branch("event_type",&event_type);
+  outtree->Branch("pol",&pol);
+  outtree->Branch("laser",&laser);
+  outtree->Branch("t",&t);
 
-  // Event loops
+  // Loop over polarity
+  for (int p=-1; p<=1; p+=2) {
+    pol = p;
 
-  // surf e
-  poisson_distribution<int> dis_surf_e(lambda_surf_e_possion);
-  event_type = 1;
-  for (int i=0; i<N*frac_surf_e; i++) {
-    if (i%1000000==0) cout<<" "<<i<<"/"<<N*frac_surf_e<<endl;
-    // Reset variables
-    Reset();
-    // Generate leakage charge position
-    start_position = 0.;
-    // Get number of charges
-    int n_charges=1+dis_surf_e(gen);
-    // Get energy from charge transport
-    for (int c=0; c<n_charges; c++)
-      energy += EnergyFromCharge(start_position, -1);
-    // Apply resolution
-    energy += dis_res_0(gen);
-    //    energy *= dis_res(gen);
-    // Apply threshhold
-    if (energy<dis_thresh(gen)) continue;
-    // Fill
-    outtree->Fill();
-  }
-  // surf h
-  event_type = 2;
-  for (int i=0; i<N*frac_surf_h; i++) {
-    if (i%1000000==0) cout<<" "<<i<<"/"<<N*frac_surf_h<<endl;
-    // Reset variables
-    Reset();
-    // Generate leakage charge position
-    start_position = 1.;
-    // Get energy from charge transport
-    energy = EnergyFromCharge(start_position, +1);
-    // Apply resolution
-    energy += dis_res_0(gen);
-    //    energy *= dis_res(gen);
-    // Apply threshhold
-    if (energy<dis_thresh(gen)) continue;
-    // Fill
-    outtree->Fill();
-  }
-  // bulk e
-  event_type = 3;
-  for (int i=0; i<N*frac_bulk_e; i++) {
-    if (i%1000000==0) cout<<" "<<i<<"/"<<N*frac_bulk_e<<endl;
-    // Reset variables
-    Reset();
-    // Generate leakage charge position
-    start_position = dis_uni(gen);
-    //    cout<<start_position<<endl;
-    // Get energy from charge transport
-    energy = EnergyFromCharge(start_position, -1);
-    // Apply resolution
-    energy += dis_res_0(gen);
-    //    energy *= dis_res(gen);
-    // Apply threshhold
-    if (energy<dis_thresh(gen)) continue;
-    // Fill
-    outtree->Fill();
-  }
-  // bulk h
-  event_type = 4;
-  for (int i=0; i<N*frac_bulk_h; i++) {
-    if (i%1000000==0) cout<<" "<<i<<"/"<<N*frac_bulk_h<<endl;
-    // Reset variables
-    Reset();
-    // Generate leakage charge position
-    start_position = dis_uni(gen);
-    // Get energy from charge transport
-    energy = EnergyFromCharge(start_position, +1);
-    // Apply resolution
-    energy += dis_res_0(gen);
-    //    energy *= dis_res(gen);
-    // Apply threshhold
-    if (energy<dis_thresh(gen)) continue;
-    // Fill
-    outtree->Fill();
-  }
-  // poisson backgound 
-  event_type = 5;
-  poisson_distribution<int> dis_background(lambda_bulk_e_possion);
-  for (int i=0; i<N*frac_bulk_e_poisson; i++) {
-    if (i%1000000==0) cout<<" "<<i<<"/"<<N*frac_bulk_e_poisson<<endl;
-    // Reset variables
-    Reset();
-    // Generate leakage charge position
-    start_position = dis_uni(gen);
-    int num_charges = dis_background(gen);
-    // Get energy from charge transport
-    for (int c=0; c<num_charges; c++) {
-      energy += EnergyFromCharge(start_position, -1);
-    }
-    // Apply resolution
-    energy += dis_res_0(gen);
-    //    energy *= dis_res(gen);
-    // Apply threshhold
-    if (energy<dis_thresh(gen)) continue;
-    // Fill
-    outtree->Fill();
-  }
-  // laser
-  event_type = 0;
-  binomial_distribution<int> dis_laser(bin_n_laser,bin_p_laser);
-  for (int i=0; i<N*frac_laser; i++) {
-    if (i%1000000==0) cout<<" "<<i<<"/"<<N*frac_laser<<endl;
-    // Reset variables
-    Reset();
-    // Generate leakage charge position
-    start_position = 0;
-    int num_charges = dis_laser(gen);
-    // Get energy from charge transport
-    for (int c=0; c<num_charges; c++) {
-      energy += EnergyFromCharge(start_position, -1);
-    }
-    // Apply resolution
-    energy += dis_res_0(gen);
-    // Apply threshhold
-    if (energy<dis_thresh(gen)) continue;
-    // Fill
-    outtree->Fill();
-  }
+    double rate_laser  = (pol>0) ? rate_laser_pos : rate_laser_neg;
+    double rate_surf_e = (pol>0) ? rate_surf_e_pos : rate_surf_e_neg;
+    double rate_surf_h = (pol>0) ? rate_surf_h_pos : rate_surf_h_neg;
+    double rate_bulk_e = (pol>0) ? rate_bulk_e_pos : rate_bulk_e_neg;
+    double rate_bulk_h = (pol>0) ? rate_bulk_h_pos : rate_bulk_h_neg;
+    double livedays    = (pol>0) ? livedays_pos : livedays_neg;
+
+    double next_laser  = (rate_laser >0) ? -1 : numeric_limits<double>::max();
+    double next_surf_e = (rate_surf_e>0) ? -1 : numeric_limits<double>::max();
+    double next_surf_h = (rate_surf_h>0) ? -1 : numeric_limits<double>::max();
+    double next_bulk_e = (rate_bulk_e>0) ? -1 : numeric_limits<double>::max();
+    double next_bulk_h = (rate_bulk_h>0) ? -1 : numeric_limits<double>::max();
+
+    t=0; // start time
+    while (t<livedays*24*60*60) {
+      if (fmod(t,24*60*60)<1) cout<<int(t/(24*60*60))<<"/"<<livedays<<endl;
+      // Determine next event time and type
+      if (rate_laser>0  && t>=next_laser)  next_laser  = t+1./rate_laser;
+      if (rate_surf_e>0 && t>=next_surf_e) next_surf_e = t-log(dis_uni(gen))/rate_surf_e;
+      if (rate_surf_h>0 && t>=next_surf_h) next_surf_h = t-log(dis_uni(gen))/rate_surf_h;
+      if (rate_bulk_e>0 && t>=next_bulk_e) next_bulk_e = t-log(dis_uni(gen))/rate_bulk_e;
+      if (rate_bulk_h>0 && t>=next_bulk_h) next_bulk_h = t-log(dis_uni(gen))/rate_bulk_h;
+      const int num_event_types = 5;
+      double next_times[num_event_types] = {next_laser,next_surf_e,next_surf_h,next_bulk_e,next_bulk_h};
+      int min_index = 0;
+      for(int i=1; i<num_event_types; i++) {
+	if(next_times[i] < next_times[min_index])
+	  min_index = i;
+      }
+      t = next_times[min_index];
+      // Reset variables
+      Reset();
+      laser=false;
+      // Generate charge position and calculate energy
+      int sign = 0; // e or h?
+      int num_charges = 1; // how many charges? default = 1
+      if (min_index==0) { // laser
+	laser = true;
+	start_position = 0.;
+	sign = pol;
+	num_charges = (pol>0) ? dis_laser_pos(gen) : dis_laser_neg(gen);
+      } else if (min_index==1) { // surf e
+	start_position = double(pol+1)/2;
+	sign = -1;
+      } else if (min_index==2) { // surf h
+	start_position = double(-pol+1)/2;
+	sign = +1;
+      } else if (min_index==3) { // bulk e
+	start_position = dis_uni(gen);
+	sign = -1;
+      } else if (min_index==4) { // bulk h
+	start_position = dis_uni(gen);
+	sign = +1;
+      } else continue;
+      for (int c=0; c<num_charges; c++) energy += EnergyFromCharge(start_position, sign);
+      // Apply resolution
+      energy += dis_res_0(gen);
+      // Apply threshhold
+      if (energy<dis_thresh(gen)) continue;
+      // Fill
+      outtree->Fill();
+    } // End event loop
+  } // End loop over polarity
+    
   outfile->cd();
   cout<<"Writing "<<outfilename.Data()<<endl;
   outtree->Write();
-  outfile->Close();
-
+  outfile->Close(); 
   return;
 }
 
@@ -474,128 +414,8 @@ int main(int argc, char* argv[]) {
     cout<<"Invalid command line arguments. Aborting."<<endl;
     return 1;
   }
-  int N = atoi(argv[1]); // number of events 
-  string cfg = argv[2]; // config filename 
+  string cfg = argv[1]; // config filename 
   Spectrum* s = new Spectrum(cfg);
-  s->Run(N);
+  s->Run();
   return 0;
 }
-
-
-
-
-
-
-
-
-
-
-
-// int main(int argc, char* argv[]) {
-//   if (argc<4) {
-//     cout<<"Invalid command line arguments. Aborting."<<endl;
-//     return 1;
-//   }
-//   string cfg = argv[2]; // config filename 
-//   string suffix = argv[3]; // output filename suffix
-
-//   double lambda_impact_ee = stod(getVariable(cfg,"lambda_impact_ee"));
-//   double lambda_impact_eh = stod(getVariable(cfg,"lambda_impact_eh"));
-//   double lambda_impact_he = stod(getVariable(cfg,"lambda_impact_he"));
-//   double lambda_impact_hh = stod(getVariable(cfg,"lambda_impact_hh"));
-//   double lambda_trap = stod(getVariable(cfg,"lambda_trap"));
-//   double lambda_bulk_e_possion = stod(getVariable(cfg,"lambda_bulk_e_poisson"));
-//   double frac_surf_e = stod(getVariable(cfg,"frac_surf_e"));
-//   double frac_bulk_e = stod(getVariable(cfg,"frac_bulk_e"));
-//   double frac_bulk_e_poisson = stod(getVariable(cfg,"frac_bulk_e_poisson"));
-//   double frac_bulk_h = stod(getVariable(cfg,"frac_bulk_h"));
-//   double resolution = stod(getVariable(cfg,"resolution"));
-//   double thresh = stod(getVariable(cfg,"thresh"));
-//   double thresh_res = stod(getVariable(cfg,"thresh_res"));
-//   int max_impacts = stoi(getVariable(cfg,"max_impacts"));
-
-//   // double lambda_impact = getVariable(cfg,"lambdaimpact");
-//   // double lambda_trap = getVariable(cfg,"lambdatrap");
-//   // double surf_frac = getVariable(cfg,"surffrac");
-//   // double res = getVariable(cfg,"res");
-//   // double thresh = getVariable(cfg,"thresh");
-//   // double thresh_res = getVariable(cfg,"threshres");
-//   // int max_impacts = int(getVariable(cfg,"maxcharges"));
-//   // double background_frac = getVariable(cfg,"backgroundfrac");
-//   // double lambda_background = getVariable(cfg,"lambdabackground");
-
-//   TRandom3* myRNG = new TRandom3();
-//   gRandom = myRNG;
-//   std::normal_distribution<> dis_res(1,res);
-//   std::normal_distribution<> dis_thresh(thresh,thresh_res);
-
-//   int N_steps = 100;
-//   double hist_max = 4.5;
-//   TString outfilename = Form("simspectrum-%s.root",suffix.c_str());
-//   TFile* outfile = new TFile(outfilename,"RECREATE");
-//   TTree* outtree = new TTree("events","events");
-//   double energy = 0;
-//   double start_position = 0;
-//   int num_impacts = 0;
-//   int num_traps = 0;
-//   int event_type = 0; // 0 = leakage, 1 = possion background
-//   outtree->Branch("energy",&energy);
-//   outtree->Branch("num_impacts",&num_impacts);
-//   outtree->Branch("num_traps",&num_traps);
-//   outtree->Branch("lambda_impact",&lambda_impact);
-//   outtree->Branch("lambda_trap",&lambda_trap);
-//   outtree->Branch("start_position",&start_position);
-//   outtree->Branch("event_type",&event_type);
-//   cout<<"Prob of Impact Ionization: "<<lambda_impact<<endl;
-//   cout<<"Fraction of Surface Events: "<<surf_frac<<endl;
-//   // Event loop
-//   event_type = 0;
-//   for (int i=0; i<N; i++) {
-//     if (i%1000000==0) cout<<" "<<i<<"/"<<N<<endl;
-//     // Generate leakage charge position
-//     bool second_surf = false; // did a surface charge generate a second surface charge
-//     if (i<N*surf_frac)
-//       start_position = 0.;
-//     else
-//       start_position = dis_uni(gen);
-//     // Reset variables
-//     energy = 0;
-//     num_impacts = 0;
-//     // Get energy from charge transport
-//     energy = energyFromElectron(start_position, lambda_impact, lambda_trap, num_impacts, num_traps, max_impacts);
-//     // Apply resolution
-//     energy *= dis_res(gen);
-//     // Apply threshhold
-//     if (energy<dis_thresh(gen)) continue;
-//     // Fill
-//     outtree->Fill();
-//   }
-//   // Poisson backgound event loop
-//   event_type = 1;
-//   poisson_distribution<int> dis_background(2);
-//   for (int i=0; i<N*background_frac; i++) {
-//     if (i%1000000==0) cout<<" "<<i<<"/"<<N*background_frac<<endl;
-//     // Generate leakage charge position
-//     start_position = dis_uni(gen);
-//     // Reset variables
-//     energy = 0;
-//     num_impacts = 0;
-//     int num_charges = dis_background(gen);
-//     // Get energy from charge transport
-//     for (int c=0; c<num_charges; c++) {
-//       energy += energyFromCharge(start_position, lambda_impact, lambda_trap, num_impacts, num_traps, max_impacts);
-//     }
-//     // Apply resolution
-//     energy *= dis_res(gen);
-//     // Apply threshhold
-//     if (energy<dis_thresh(gen)) continue;
-//     // Fill
-//     outtree->Fill();
-//   }
-  
-//   outfile->cd();
-//   cout<<"Writing "<<outfilename.Data()<<endl;
-//   outtree->Write();
-//   outfile->Close();
-//   return 1;
-// }

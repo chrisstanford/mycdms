@@ -2,34 +2,44 @@
 #define SPECTRUM_H
 
 #include <string>
+#include <random>
 
 using namespace std;
 
 class Spectrum {
  public:
+
+
   // input
+  double resolution;
+  double thresh;
+  double thresh_res;
+  int max_impacts;
+  double lambda_trap_e;
+  double lambda_trap_h;
   double lambda_impact_ee;
   double lambda_impact_eh;
   double lambda_impact_he;
   double lambda_impact_hh;
-  double lambda_trap_e;
-  double lambda_trap_h;
-  double lambda_bulk_e_possion;
-  double lambda_surf_e_possion;
-  double frac_surf_e;
-  double frac_surf_h;
-  double frac_bulk_e;
-  double frac_bulk_e_poisson;
-  double frac_bulk_h;
-  double resolution;
-  double thresh;
-  double thresh_res;
+  double lambda_surf_eh0;
+  double lambda_surf_he0;
+  double lambda_surf_eh1;
+  double lambda_surf_he1;
+  double lambda_laser_pos;
+  double lambda_laser_neg;
+  double rate_laser_pos;
+  double rate_laser_neg;
+  double rate_surf_e_pos;
+  double rate_surf_e_neg;
+  double rate_surf_h_pos;
+  double rate_surf_h_neg;
+  double rate_bulk_e_pos;
+  double rate_bulk_e_neg;
+  double rate_bulk_h_pos;
+  double rate_bulk_h_neg;
+  double livedays_pos;
+  double livedays_neg;
   string suffix;
-  int max_impacts;
-
-  double frac_laser;
-  int bin_n_laser;
-  double bin_p_laser;
 
   
   // local variables
@@ -41,13 +51,27 @@ class Spectrum {
   int num_impacts_hh;
   int num_traps_e;
   int num_traps_h;
-
+  int pol; // polarity
+  bool laser;
+  
   // functions
   Spectrum(string cfg);
   void Reset();
   void LoadConfig(string cfg);
-  void Run(int N);
+  void Run();
   double EnergyFromCharge(double x, int sign);
+
+  // random
+  random_device rd;  //Will be used to obtain a seed for the random number engine
+  mt19937 gen; //Standard mersenne_twister_engine seeded with rd()
+  uniform_real_distribution<> dis_uni;//(0,1);
+  poisson_distribution<int> dis_surf_eh0;
+  poisson_distribution<int> dis_surf_he0;
+  poisson_distribution<int> dis_surf_eh1;
+  poisson_distribution<int> dis_surf_he1;
+  poisson_distribution<int> dis_laser_pos;
+  poisson_distribution<int> dis_laser_neg;
+
 };
 
 

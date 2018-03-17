@@ -12,6 +12,7 @@ Int_t mycolors8[8] = {TColor::GetColor("#000000"),
 			TColor::GetColor("#cc79a7"),
 			TColor::GetColor("#d55e00")};
 
+
 Int_t mycolors12[12] = {
   TColor::GetColor("#aa0a3c"), //Red
   TColor::GetColor("#fa7850"), //Orange
@@ -25,6 +26,11 @@ Int_t mycolors12[12] = {
   TColor::GetColor("#f0f032"), //Yellow
   TColor::GetColor("#a0fa82"), //Light Green
   TColor::GetColor("#fae6be")}; //Peach
+
+
+int myRed=mycolors12[0];
+int myOrange=mycolors12[1];
+int myGreen=mycolors12[2];
 
 /* struct myColors8 { */
 /*   const int nColors; */
