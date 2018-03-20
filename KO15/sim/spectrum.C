@@ -203,13 +203,13 @@ double Spectrum::EnergyFromCharge(double x, int sign) {
   } else if (sign>0 && next_x<0) { // h makes it to 0 without colliding
     int num_surf_he = dis_surf_he0(gen);
     num_impacts_he += num_surf_he;
-    double E = 1-x; // this charge
+    double E = x; // this charge
     for (int i=0; i<num_surf_he; i++) E += EnergyFromCharge(0,-1); // es freed at surface by h
     return E;
   } else if (sign>0 && next_x>1) { // h makes it to 1 without colliding
     int num_surf_he = dis_surf_he1(gen);
     num_impacts_he += num_surf_he;
-    double E = x; // this charge
+    double E = 1-x; // this charge
     for (int i=0; i<num_surf_he; i++) E += EnergyFromCharge(1,-1); // es freed at surface by h
     return E;
   } else if (min_index==0 && sign<0) { // e impact ionizes and produces e
