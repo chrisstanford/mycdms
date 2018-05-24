@@ -21,6 +21,8 @@ class Spectrum {
   double lambda_impact_eh;
   double lambda_impact_he;
   double lambda_impact_hh;
+  double lambda_surf_e;
+  double lambda_surf_h;
   double lambda_surf_eh0;
   double lambda_surf_he0;
   double lambda_surf_eh1;
@@ -65,6 +67,8 @@ class Spectrum {
   random_device rd;  //Will be used to obtain a seed for the random number engine
   mt19937 gen; //Standard mersenne_twister_engine seeded with rd()
   uniform_real_distribution<> dis_uni;//(0,1);
+  poisson_distribution<int> dis_surf_e;
+  poisson_distribution<int> dis_surf_h;
   poisson_distribution<int> dis_surf_eh0;
   poisson_distribution<int> dis_surf_he0;
   poisson_distribution<int> dis_surf_eh1;

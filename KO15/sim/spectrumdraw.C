@@ -62,7 +62,7 @@ double separation_thresh=20.e-6; // 20 us
 //   else h->Scale(1./h_norm->GetMaximum(),"width");
 // }
 
-void formatPlot(TH1D* h, TH1D* h_norm) {
+void formatPlot(TH1D* h) {
   h->ResetStats();
   h->Sumw2();
   h->SetLineWidth(2);
@@ -111,15 +111,13 @@ int spectrumdraw(TString suffix) {
   const int N = events->GetEntries();
   //  TH1D* h_sim = new TH1D("hsim","",nbins,0,10);
 
-  TH1D* h_simu_bg_pos = new TH1D("h_simu_bg_pos","Background (+140V);e-h pairs",nbins_new-1,xbinedges_new);
-  TH1D* h_simu_bg_neg = new TH1D("h_simu_bg_neg","Background (-140V);e-h pairs",nbins_new-1,xbinedges_new);
+  TH1D* h_simu_bg_pos = new TH1D("h_simu_bg_pos","+140V;e-h pairs",nbins_new-1,xbinedges_new);
+  TH1D* h_simu_bg_neg = new TH1D("h_simu_bg_neg","-140V;e-h pairs",nbins_new-1,xbinedges_new);
   TH1D* h_simu_ls_pos = new TH1D("h_simu_ls_pos","Laser+Background (+140V);e-h pairs",nbins_new-1,xbinedges_new);
   TH1D* h_simu_ls_neg = new TH1D("h_simu_ls_neg","Laser+Background (-140V);e-h pairs",nbins_new-1,xbinedges_new);
 
-  TH1D* h_simu_bg_pos_pu = new TH1D("h_simu_bg_pos_pu",";e-h pairs",nbins_new-1,xbinedges_new);
-  TH1D* h_simu_bg_neg_pu = new TH1D("h_simu_bg_neg_pu",";e-h pairs",nbins_new-1,xbinedges_new);
-  TH1D* h_simu_ls_pos_pu = new TH1D("h_simu_ls_pos_pu",";e-h pairs",nbins_new-1,xbinedges_new);
-  TH1D* h_simu_ls_neg_pu = new TH1D("h_simu_ls_neg_pu",";e-h pairs",nbins_new-1,xbinedges_new);
+  TH1D* h_simu_pos_pu = new TH1D("h_simu_pos_pu",";e-h pairs",nbins_new-1,xbinedges_new);
+  TH1D* h_simu_neg_pu = new TH1D("h_simu_neg_pu",";e-h pairs",nbins_new-1,xbinedges_new);
 
   // Event loop
   for (int i=0; i<N; i++) {
@@ -145,10 +143,8 @@ int spectrumdraw(TString suffix) {
 	    
 	  }
 	}
-	if (pol>0) h_simu_ls_pos_pu->Fill(E);
-	if (pol<0) h_simu_ls_neg_pu->Fill(E);
-	if (!L && pol>0) h_simu_bg_pos_pu->Fill(E);
-	if (!L && pol<0) h_simu_bg_neg_pu->Fill(E);
+	if (pol>0) h_simu_pos_pu->Fill(E);
+	if (pol<0) h_simu_neg_pu->Fill(E);
       }
     }
     if (pol>0) h_simu_ls_pos->Fill(E);
@@ -158,47 +154,44 @@ int spectrumdraw(TString suffix) {
     
   }
   
-  formatPlot(h_simu_bg_pos_pu,h_simu_bg_pos);
-  formatPlot(h_simu_bg_neg_pu,h_simu_bg_neg);
-  formatPlot(h_simu_ls_pos_pu,h_simu_ls_pos);
-  formatPlot(h_simu_ls_neg_pu,h_simu_ls_neg);
+  formatPlot(h_simu_pos_pu);
+  formatPlot(h_simu_neg_pu);
 
-  h_simu_bg_pos_pu->Scale(1./h_simu_ls_pos->Integral("width")),"width");
+  h_simu_pos_pu->Scale(1./h_simu_ls_pos->Integral("width"),"width");
+  h_simu_neg_pu->Scale(1./h_simu_ls_neg->Integral("width"),"width");
 
+  formatPlot(h_simu_bg_pos);
+  formatPlot(h_simu_bg_neg);
+  formatPlot(h_simu_ls_pos);
+  formatPlot(h_simu_ls_neg);
 
+  h_simu_bg_pos->Scale(1./h_simu_ls_pos->Integral("width"),"width");
+  h_simu_bg_neg->Scale(1./h_simu_ls_neg->Integral("width"),"width");
+  h_simu_ls_pos->Scale(1./h_simu_ls_pos->Integral("width"),"width");
+  h_simu_ls_neg->Scale(1./h_simu_ls_neg->Integral("width"),"width");
 
-  formatPlot(h_simu_bg_pos,h_simu_bg_pos);
-  formatPlot(h_simu_bg_neg,h_simu_bg_neg);
-  formatPlot(h_simu_ls_pos,h_simu_ls_pos);
-  formatPlot(h_simu_ls_neg,h_simu_ls_neg);
-
-  h_simu_bg_pos->Scale(h_simu_bg_pos->GetBinWidth(h_simu_bg_pos->FindBin(0.9))*h_data_bg_pos->GetBinContent(h_data_bg_pos->FindBin(0.9))/h_simu_bg_pos->GetBinContent(h_simu_bg_pos->FindBin(0.9)),"width");
-  h_simu_bg_neg->Scale(h_simu_bg_neg->GetBinWidth(h_simu_bg_neg->FindBin(0.9))*h_data_bg_neg->GetBinContent(h_data_bg_neg->FindBin(0.9))/h_simu_bg_neg->GetBinContent(h_simu_bg_neg->FindBin(0.9)),"width");
-  h_simu_ls_pos->Scale(h_simu_ls_pos->GetBinWidth(h_simu_ls_pos->FindBin(0.9))*h_data_ls_pos->GetBinContent(h_data_ls_pos->FindBin(0.9))/h_simu_ls_pos->GetBinContent(h_simu_ls_pos->FindBin(0.9)),"width");
-  h_simu_ls_neg->Scale(h_simu_ls_neg->GetBinWidth(h_simu_ls_neg->FindBin(0.9))*h_data_ls_neg->GetBinContent(h_data_ls_neg->FindBin(0.9))/h_simu_ls_neg->GetBinContent(h_simu_ls_neg->FindBin(0.9)),"width");
-  
   TCanvas* c = new TCanvas("c","c",1600,1100);
   c->Divide(2,1);
   c->cd(1);
   h_simu_ls_pos->Draw();
   h_simu_bg_pos->Draw("same");
   h_simu_ls_pos->SetLineColor(myRed);
-  h_simu_ls_pos_pu->Draw("same");
-  h_simu_ls_pos_pu->SetLineColor(myOrange);
+  h_simu_pos_pu->Draw("same");
+  h_simu_pos_pu->SetLineColor(myOrange);
   gPad->SetLogy();
 
   TLegend* leg = new TLegend(0.6,0.6,0.85,0.85);
-  leg->AddEntry(h_data_bg_pos,"Data","l");
-  leg->AddEntry(h_simu_bg_pos,"MC","l");
-  leg->AddEntry(h_simu_bg_pos_pu,"Pilup (MC)","l");
+  leg->AddEntry(h_simu_ls_pos,"Total MC","l");
+  leg->AddEntry(h_simu_bg_pos,"Non-laser MC","l");
+  leg->AddEntry(h_simu_pos_pu,"Pilup","l");
   leg->Draw();
   
   c->cd(2);
   h_simu_ls_neg->Draw();
   h_simu_bg_neg->Draw("same");
   h_simu_ls_neg->SetLineColor(myRed);
-  h_simu_ls_neg_pu->Draw("same");
-  h_simu_ls_neg_pu->SetLineColor(myOrange);
+  h_simu_neg_pu->Draw("same");
+  h_simu_neg_pu->SetLineColor(myOrange);
   gPad->SetLogy();
 
 

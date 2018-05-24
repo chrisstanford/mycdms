@@ -266,6 +266,8 @@ Spectrum::Spectrum(string cfg) {
 
   gen.seed(rd());
   dis_uni.param(uniform_real_distribution<>::param_type(0,1));
+  dis_surf_e.param(poisson_distribution<int>::param_type(lambda_surf_e));
+  dis_surf_h.param(poisson_distribution<int>::param_type(lambda_surf_h)); 
   dis_surf_eh0.param(poisson_distribution<int>::param_type(lambda_surf_eh0));
   dis_surf_he0.param(poisson_distribution<int>::param_type(lambda_surf_he0)); 
   dis_surf_eh1.param(poisson_distribution<int>::param_type(lambda_surf_eh1));
@@ -286,6 +288,8 @@ void Spectrum::LoadConfig(string cfg) {
   lambda_impact_eh = stod(getVariable(cfg,"lambda_impact_eh"));
   lambda_impact_he = stod(getVariable(cfg,"lambda_impact_he"));
   lambda_impact_hh = stod(getVariable(cfg,"lambda_impact_hh"));
+  lambda_surf_e = stod(getVariable(cfg,"lambda_surf_e"));
+  lambda_surf_h = stod(getVariable(cfg,"lambda_surf_h"));
   lambda_surf_eh0 = stod(getVariable(cfg,"lambda_surf_eh0"));
   lambda_surf_he0 = stod(getVariable(cfg,"lambda_surf_he0"));
   lambda_surf_eh1 = stod(getVariable(cfg,"lambda_surf_eh1"));
@@ -314,6 +318,7 @@ void Spectrum::Run() {
   gRandom = myRNG;
   std::normal_distribution<> dis_res(1,resolution);
   std::normal_distribution<> dis_res_0(0,resolution);
+  std::normal_distribution<> dis_res_1(0,resolution/2);
   std::normal_distribution<> dis_thresh(thresh,thresh_res);
 
   TString outfilename = Form("simspectrum-%s.root",suffix.c_str());
@@ -351,9 +356,14 @@ void Spectrum::Run() {
     double next_bulk_e = (rate_bulk_e>0) ? -1 : numeric_limits<double>::max();
     double next_bulk_h = (rate_bulk_h>0) ? -1 : numeric_limits<double>::max();
 
+    int num_laser = livedays*24*60*60*rate_laser; // estimated number of laser events;
     t=0; // start time
     while (t<livedays*24*60*60) {
-      if (fmod(t,24*60*60)<1) cout<<int(t/(24*60*60))<<"/"<<livedays<<endl;
+      int i_laser = t*rate_laser;
+      //      cout<<i_laser<<" "<<num_laser<<endl;
+      if (num_laser>0 && (i_laser*10%num_laser)==0) cout<<i_laser*100/num_laser<<"%"<<endl;
+      
+      //      if (fmod(t,24*60*60)<1) cout<<int(t/(24*60*60))<<"/"<<livedays<<endl;
       // Determine next event time and type
       if (rate_laser>0  && t>=next_laser)  next_laser  = t+1./rate_laser;
       if (rate_surf_e>0 && t>=next_surf_e) next_surf_e = t-log(dis_uni(gen))/rate_surf_e;
@@ -382,9 +392,11 @@ void Spectrum::Run() {
       } else if (min_index==1) { // surf e
 	start_position = double(pol+1)/2;
 	sign = -1;
+	num_charges += dis_surf_e(gen);
       } else if (min_index==2) { // surf h
 	start_position = double(-pol+1)/2;
 	sign = +1;
+	num_charges += dis_surf_h(gen);
       } else if (min_index==3) { // bulk e
 	start_position = dis_uni(gen);
 	sign = -1;
@@ -395,6 +407,9 @@ void Spectrum::Run() {
       for (int c=0; c<num_charges; c++) energy += EnergyFromCharge(start_position, sign);
       // Apply resolution
       energy += dis_res_0(gen);
+      // test
+      // if (energy>0.8) energy += dis_res_0(gen);
+      // else energy += dis_res_1(gen);
       // Apply threshhold
       if (energy<dis_thresh(gen)) continue;
       // Fill
